@@ -3,127 +3,155 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>온라인 심야 포차 | Moonlit Pocha</title>
+  <title>온라인 심야 포차 | 날씨 연동 3D 메타버스</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-    body, html { width: 100%; height: 100%; overflow: hidden; background: #0c0b10; font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; }
-    #canvas-container { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-    canvas { display: block; box-shadow: 0 0 50px rgba(0,0,0,0.9); }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #06060a; font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; }
+    #webgl-container { position: absolute; inset: 0; }
     
     /* 35mm 필름 그레인 & 비네팅 */
     .film-grain {
-      position: absolute; inset: 0; pointer-events: none; opacity: 0.18;
+      position: absolute; inset: 0; pointer-events: none; opacity: 0.16;
       background-image: radial-gradient(#fff 10%, transparent 11%), radial-gradient(#000 10%, transparent 11%);
-      background-size: 3px 3px; background-position: 0 0, 1.5px 1.5px;
+      background-size: 3px 3px; z-index: 5;
     }
     .vignette {
       position: absolute; inset: 0; pointer-events: none;
-      background: radial-gradient(circle at center, transparent 40%, rgba(10,8,6,0.85) 100%);
+      background: radial-gradient(circle at center, transparent 40%, rgba(5,3,2,0.85) 100%);
+      z-index: 6;
     }
 
-    /* 상단 상태 HUD */
-    .top-hud {
+    /* 상단 상태바 & 날씨 제어 */
+    .top-bar {
       position: absolute; top: 18px; left: 20px; right: 20px;
-      display: flex; justify-content: space-between; align-items: center; pointer-events: none; z-index: 10;
+      display: flex; justify-content: space-between; align-items: center; z-index: 10; pointer-events: none;
     }
-    .badge-box {
-      background: rgba(22, 18, 16, 0.85); backdrop-filter: blur(8px);
-      border: 1px solid rgba(229, 107, 41, 0.35); padding: 7px 15px; border-radius: 20px;
-      color: #f7ebe1; font-size: 13px; display: flex; align-items: center; gap: 8px;
+    .status-group { display: flex; gap: 8px; align-items: center; }
+    .badge {
+      background: rgba(18, 14, 12, 0.85); backdrop-filter: blur(8px);
+      border: 1px solid rgba(245, 120, 50, 0.4); padding: 8px 16px; border-radius: 20px;
+      color: #fff; font-size: 13px; display: flex; align-items: center; gap: 8px;
     }
-    .dot-live { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; }
-    .btn-audio {
-      pointer-events: auto; background: rgba(22, 18, 16, 0.85); border: 1px solid rgba(255,255,255,0.2);
-      color: #fff; padding: 7px 15px; border-radius: 20px; cursor: pointer; font-size: 13px;
+    .dot-pulse { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; }
+    
+    /* 날씨 전환 셀렉터 */
+    .weather-selector {
+      pointer-events: auto; background: rgba(18, 14, 12, 0.85); border: 1px solid rgba(245, 120, 50, 0.4);
+      color: #f7ebe1; padding: 7px 14px; border-radius: 20px; font-size: 13px; cursor: pointer; outline: none;
+    }
+    .btn-sound {
+      pointer-events: auto; background: rgba(18, 14, 12, 0.85); border: 1px solid rgba(255,255,255,0.25);
+      color: #fff; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 13px;
     }
 
-    /* 하단 말풍선 채팅 바 */
-    .bottom-chat-bar {
+    /* 하단 조작 UI */
+    .bottom-ui {
       position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-      width: min(520px, 90vw); display: flex; gap: 8px; z-index: 20;
+      display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 10;
+      width: min(540px, 92vw);
     }
-    .bottom-chat-bar input {
-      flex: 1; background: rgba(20, 16, 14, 0.92); border: 1px solid rgba(229, 107, 41, 0.4);
+    .controls-hint {
+      font-size: 12px; color: rgba(255,255,255,0.7); background: rgba(0,0,0,0.55);
+      padding: 4px 14px; border-radius: 12px; backdrop-filter: blur(4px);
+    }
+    .quick-actions { display: flex; gap: 10px; margin-bottom: 2px; }
+    .quick-btn {
+      background: rgba(26, 20, 17, 0.9); border: 1px solid rgba(245, 120, 50, 0.35);
+      color: #f5d8c7; padding: 7px 14px; border-radius: 18px; font-size: 12px;
+      cursor: pointer; backdrop-filter: blur(6px); transition: all 0.2s;
+    }
+    .quick-btn:hover { background: #f57832; color: #fff; }
+
+    .chat-box { width: 100%; display: flex; gap: 8px; }
+    .chat-box input {
+      flex: 1; background: rgba(20, 16, 14, 0.92); border: 1px solid rgba(245, 120, 50, 0.4);
       padding: 12px 18px; border-radius: 25px; color: #fff; font-size: 14px; outline: none;
     }
-    .bottom-chat-bar input:focus { border-color: #e56b29; box-shadow: 0 0 10px rgba(229,107,41,0.3); }
-    .bottom-chat-bar button {
-      background: #e56b29; border: none; color: #fff; padding: 0 20px; border-radius: 25px;
-      font-weight: 600; cursor: pointer;
+    .chat-box input:focus { border-color: #f57832; box-shadow: 0 0 12px rgba(245,120,50,0.4); }
+    .chat-box button {
+      background: #f57832; border: none; color: #fff; padding: 0 22px; border-radius: 25px;
+      font-weight: bold; cursor: pointer;
     }
 
-    /* 모달 팝업 */
+    /* 3D 말풍선 */
+    #speech-bubble {
+      position: absolute; z-index: 15; pointer-events: none; display: none;
+      background: rgba(22, 17, 14, 0.92); border: 1px solid #f57832; color: #fff;
+      padding: 6px 14px; border-radius: 14px; font-size: 13px; font-weight: 500;
+      transform: translate(-50%, -100%); white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    /* 모달 공통 */
     .modal {
       display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.75);
-      backdrop-filter: blur(6px); align-items: center; justify-content: center; z-index: 50;
+      backdrop-filter: blur(8px); align-items: center; justify-content: center; z-index: 50;
     }
     .modal.active { display: flex; }
     .modal-card {
-      background: #1c1815; border: 1px solid #44372e; border-radius: 16px;
-      width: min(460px, 92vw); padding: 24px; color: #f2e9e4; position: relative;
-      max-height: 90vh; overflow-y: auto;
+      background: #1c1714; border: 1px solid #483930; border-radius: 16px;
+      width: min(440px, 92vw); padding: 24px; color: #f2e9e4; position: relative;
     }
     .modal-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: #888; font-size: 20px; cursor: pointer; }
-    
-    /* 레트로 위로 영수증 */
-    .receipt-box {
-      background: #fffdf5; color: #1c1917; font-family: 'Courier New', Courier, monospace, sans-serif;
-      padding: 20px; border-radius: 6px; margin: 16px 0; border: 1px dashed #aaa;
-      box-shadow: 0 8px 25px rgba(0,0,0,0.4); line-height: 1.6;
-    }
-    .receipt-title { text-align: center; font-weight: bold; font-size: 16px; border-bottom: 2px dashed #333; padding-bottom: 8px; margin-bottom: 12px; }
     .btn-action {
-      width: 100%; background: #e56b29; border: none; padding: 12px; border-radius: 8px;
+      width: 100%; background: #f57832; border: none; padding: 12px; border-radius: 8px;
       color: #fff; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 14px;
     }
   </style>
 </head>
 <body>
 
-  <div id="canvas-container">
-    <canvas id="gameCanvas" width="960" height="600"></canvas>
-  </div>
+  <div id="webgl-container"></div>
   <div class="film-grain"></div>
   <div class="vignette"></div>
 
-  <!-- 상단 HUD -->
-  <div class="top-hud">
-    <div class="badge-box">
-      <span class="dot-live"></span>
-      <span>포차 손님 <strong id="user-count">1</strong>명 머무는 중</span>
+  <!-- 머리 위 3D 말풍선 -->
+  <div id="speech-bubble"></div>
+
+  <!-- 상단 상태바 & 날씨 선택기 -->
+  <div class="top-bar">
+    <div class="status-group">
+      <div class="badge">
+        <span class="dot-pulse"></span>
+        <span id="location-weather-text">날씨 확인 중...</span>
+      </div>
+      <select class="weather-selector" id="weatherSelect" onchange="changeWeatherManual(this.value)">
+        <option value="rain">🌧️ 비 오는 밤</option>
+        <option value="snow">❄️ 눈 내리는 밤</option>
+        <option value="clear">✨ 맑은 별밤</option>
+        <option value="fog">🌫️ 밤안개 자욱한 밤</option>
+      </select>
     </div>
-    <button class="btn-audio" id="audioToggle">🌧️ 빗소리 켜기</button>
+    <button class="btn-sound" id="soundToggle">🌧️ 소리 켜기</button>
   </div>
 
-  <!-- 하단 채팅 입력창 -->
-  <form class="bottom-chat-bar" id="chatForm" onsubmit="event.preventDefault(); sendChatMessage();">
-    <input type="text" id="chatInput" placeholder="하고 싶은 말을 적으면 머리 위에 뜹니다 (Enter)" maxlength="40" autocomplete="off" />
-    <button type="submit">말하기</button>
-  </form>
+  <!-- 하단 컨트롤 & 채팅 -->
+  <div class="bottom-ui">
+    <div class="quick-actions">
+      <button class="quick-btn" onclick="openImo()">👵 이모님 위로 주문</button>
+      <button class="quick-btn" onclick="openWall()">🪵 낙서벽 보기</button>
+      <button class="quick-btn" onclick="toastMsg('챙-! 누군가와 함께 잔을 기울였습니다 🍶')">🍶 랜선 건배</button>
+    </div>
+    <div class="controls-hint">방향키(또는 WASD) 이동 | 마우스 드래그 360도 회전</div>
+    <form class="chat-box" id="chatForm" onsubmit="event.preventDefault(); sendChat();">
+      <input type="text" id="chatInput" placeholder="머리 위에 띄울 이야기를 적어보세요..." maxlength="30" autocomplete="off" />
+      <button type="submit">말하기</button>
+    </form>
+  </div>
 
-  <!-- 이모님 고민 처방 모달 -->
+  <!-- 이모님 고민 모달 -->
   <div class="modal" id="imoModal">
     <div class="modal-card">
       <button class="modal-close" onclick="closeModal('imoModal')">✕</button>
-      <h3 style="color:#e56b29; margin-bottom:6px;">👵 포차 이모님</h3>
-      <p style="font-size:13px; color:#aaa; margin-bottom:15px;">"얼굴이 반쪽이네. 오늘 무슨 속상한 일 있었어? 이모한테 편하게 털어놔 봐."</p>
-      <textarea id="worryInput" style="width:100%; height:85px; background:#29221d; border:1px solid #544439; border-radius:8px; padding:12px; color:#fff; font-size:14px; resize:none;" placeholder="예: 오늘 회사에서 상사한테 너무 억울하게 혼났어 / 시험 망쳐서 앞이 캄캄해 / 그냥 혼자 있는 것 같고 외로워"></textarea>
-      <button class="btn-action" onclick="prescribeComfort()">이모님한테 속풀기 (처방 받기)</button>
+      <h3 style="color:#f57832; margin-bottom:6px;">👵 포차 이모님</h3>
+      <p style="font-size:13px; color:#aaa; margin-bottom:15px;" id="imoGreeting">"오늘 날씨도 궂은데 고생 많았다. 속상한 일 있으면 털어놔 봐라."</p>
+      <textarea id="worryInput" style="width:100%; height:80px; background:#29221d; border:1px solid #544439; border-radius:8px; padding:10px; color:#fff; font-size:14px; resize:none;" placeholder="오늘 있었던 일이나 속상한 마음을 적어보세요"></textarea>
+      <button class="btn-action" onclick="prescribeAdvice()">이모님 처방 안주 받기</button>
 
-      <div id="receiptResult" style="display:none;" class="receipt-box">
-        <div class="receipt-title">심 야 포 차 • 위 로 영 수 증</div>
-        <div style="font-size:12px; color:#666; margin-bottom:10px;">
-          일시: <span id="receiptDate"></span><br>
-          손님 상태: <span id="receiptMood" style="font-weight:bold; color:#d9531e;"></span>
-        </div>
-        <div style="border-top:1px dashed #ccc; border-bottom:1px dashed #ccc; padding:12px 0; margin-bottom:10px;">
-          <div style="font-weight:bold; font-size:14px; margin-bottom:4px;" id="receiptDish"></div>
-          <div style="font-size:13px; color:#333; margin-top:6px; word-break:keep-all;" id="receiptAdvice"></div>
-        </div>
-        <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:bold;">
-          <span>청구 금액</span>
-          <span>0원 (오늘 하루도 고생했음)</span>
-        </div>
+      <div id="resultBox" style="display:none; background:#fffdf5; color:#222; padding:15px; border-radius:6px; margin-top:15px; font-family:monospace; line-height:1.6; border:1px dashed #999;">
+        <div style="font-weight:bold; font-size:14px; border-bottom:1px solid #ddd; padding-bottom:4px;" id="dishTitle"></div>
+        <div style="font-size:13px; margin:8px 0;" id="dishDesc"></div>
+        <div style="font-size:11px; color:#777; text-align:right;">금액: 0원 (수고비 포함)</div>
       </div>
     </div>
   </div>
@@ -132,444 +160,420 @@
   <div class="modal" id="wallModal">
     <div class="modal-card">
       <button class="modal-close" onclick="closeModal('wallModal')">✕</button>
-      <h3 style="color:#e56b29; margin-bottom:10px;">🪵 합판 낙서벽</h3>
-      <div id="graffitiList" style="height:160px; overflow-y:auto; background:#29221d; border-radius:8px; padding:12px; margin-bottom:12px; font-size:13px; line-height:1.8; border:1px solid #4a3d34;">
-        <div>- 다들 내일은 오늘보다 덜 힘들기를.</div>
-        <div>- 월요일 오지 마라 진짜...</div>
-        <div>- 엄마 보고 싶다. 다들 아프지 마요.</div>
-        <div>- 버티다 보면 좋은 날 꼭 오겠지!</div>
+      <h3 style="color:#f57832; margin-bottom:10px;">🪵 합판 낙서벽</h3>
+      <div id="wallList" style="height:150px; overflow-y:auto; background:#29221d; border-radius:8px; padding:12px; margin-bottom:12px; font-size:13px; line-height:1.8; border:1px solid #4a3d34;">
+        <div>- 내일은 오늘보다 덜 힘들기를.</div>
+        <div>- 날씨가 쌀쌀할 땐 어묵 국물이 최고지.</div>
+        <div>- 다들 아프지 말고 건강하자!</div>
       </div>
       <div style="display:flex; gap:8px;">
-        <input type="text" id="graffitiInput" placeholder="벽에 흔적 남기기 (최대 30자)" maxlength="30" style="flex:1; background:#29221d; border:1px solid #544439; border-radius:8px; padding:10px; color:#fff; font-size:13px;" />
-        <button class="btn-action" style="width:auto; margin:0;" onclick="postGraffiti()">새기기</button>
+        <input type="text" id="wallInput" placeholder="벽에 흔적 남기기" maxlength="25" style="flex:1; background:#29221d; border:1px solid #544439; border-radius:8px; padding:10px; color:#fff; font-size:13px;" />
+        <button class="btn-action" style="width:auto; margin:0;" onclick="postWall()">새기기</button>
       </div>
     </div>
   </div>
 
   <script>
-    // --- 1. 다중 문맥 결합형 이모님 지능 엔진 (NLP Rule Engine) ---
-    const POCHA_BRAIN = {
-      // 1. 직장 / 업무 / 퇴근 / 상사 / 이직
-      work: {
-        keywords: ['회사', '상사', '팀장', '부장', '퇴근', '야근', '일', '월급', '사표', '이직', '보고서', '혼났', '욕먹', '억울', '직장', '거래처', '동료'],
-        moodName: '과로와 울화통으로 인한 속쓰림',
-        dishes: [
-          '연탄불 불닭발 & 소주 반 잔',
-          '청양고추 팍팍 넣은 매콤 오돌뼈',
-          '바삭한 해물파전에 막걸리 한 모금',
-          '자글자글 기름진 돼지껍데기 볶음'
-        ],
-        intros: [
-          '어이구, 얼굴에 피곤이 덕지덕지 붙어서 들어왔네.',
-          '오늘도 그 빌어먹을 직장에서 남의 돈 벌어먹느라 욕봤다.',
-          '말 안 해도 안다. 숨 턱턱 막히는 하루였지?'
-        ],
-        midThoughts: [
-          '지들이 뭔데 우리 귀한 손님 기를 죽이고 난리야? 남의 밥줄 쥐고 있다고 유세 떠는 것들 다 신경 쓰지 마라.',
-          '세상에 완벽한 회사가 어디 있고 안 틀리는 사람이 어디 있어. 밥 벌어먹고 산 것만 해도 넌 오늘 100점이다.',
-          '일이란 건 말이다, 내 영혼까지 갈아 넣으라고 월급 주는 게 아냐. 딱 받은 만큼만 해주고 털어버려.'
-        ],
-        outros: [
-          '이거 씹어 삼키면서 속으로 그 인간들 정수리에 욕 한 바가지 콱 뱉고 털어버려라!',
-          '오늘은 휴대폰 알림 다 꺼두고, 뜨끈한 국물 마시고 대자로 뻗어 자라. 내일은 내일의 해가 뜬다.',
-          '손님은 생각보다 훨씬 단단하고 귀한 사람이다. 기죽지 말고 어깨 활짝 펴!'
-        ]
-      },
+    // ==========================================
+    // 1. THREE.JS 3D 메타버스 씬 구축
+    // ==========================================
+    const container = document.getElementById('webgl-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x06060a);
+    scene.fog = new THREE.FogExp2(0x06060a, 0.035);
 
-      // 2. 연애 / 이별 / 실연 / 사람 관계의 상처
-      love: {
-        keywords: ['헤어졌', '이별', '차였', '연애', '남친', '여친', '애인', '보고싶', '눈물', '슬퍼', '마음', '그리워', '짝사랑', '연락'],
-        moodName: '가슴 뻐근한 이별 후유증',
-        dishes: [
-          '김 모락모락 나는 뜨끈한 홍합탕',
-          '보들보들 뚝배기 계란찜',
-          '설탕 솔솔 뿌린 옛날 토스트',
-          '매콤달콤 포차 떡볶이와 튀김'
-        ],
-        intros: [
-          '눈가가 짓물렀네... 어디 구석에서 또 혼자 찔끔거리다 왔지?',
-          '마음 다쳐서 왔구나. 사람 때문에 아픈 게 세상에서 제일 시린 법이지.',
-          '얼마나 가슴을 쥐어짰으면 여기까지 그 한숨 소리가 들릴까.'
-        ],
-        midThoughts: [
-          '지 인연 아니면 제 발로 나가는 법이다. 손님 탓 하나도 없으니까 자책으로 밤새지 마라.',
-          '떠난 버스 뒤꽁무니 보고 울어봤자 내 매연만 마신다. 손님 같은 진국을 못 알아본 그 인간 복이 딱 거기까지인 거야.',
-          '마음 앓는 것도 다 피가 되고 살이 된다지만, 일단은 당장 덜 아픈 게 먼저다.'
-        ],
-        outros: [
-          '국물 식기 전에 들이켜라. 따뜻한 게 뱃속에 들어가야 눈물도 멎는 법이다.',
-          '실컷 울고 싶으면 여기서 울어. 포차 천막 빗소리가 손님 우는 소리 다 덮어줄 테니까.',
-          '세월이 약이라는 뻔한 소리는 안 한다. 그냥 오늘 밤만 딱 눈 딱 감고 버텨보자.'
-        ]
-      },
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
 
-      // 3. 시험 / 취업 / 미래 / 돈 / 불안감
-      future: {
-        keywords: ['시험', '취업', '면접', '공부', '합격', '떨어졌', '불합격', '불안', '미래', '돈', '빚', '앞날', '막막', '자격증', '나이'],
-        moodName: '앞길이 안갯속인 청춘의 막막함',
-        dishes: [
-          '바삭하고 짭조름한 스팸 계란구이',
-          '뜨끈한 포차 잔치국수 곱배기',
-          '치즈 듬뿍 올린 통통한 계란말이',
-          '담백하고 고소한 조각 두부김치'
-        ],
-        intros: [
-          '어깨에 짐을 한 트럭은 짊어지고 걸어 들어오네.',
-          '세상이 자꾸 너더러 시험 보라고 닦달하지? 숨 좀 돌려라.',
-          '조급해 죽겠지? 남들은 다 앞서가는 것 같고 나만 제자리 같고.'
-        ],
-        midThoughts: [
-          '꽃마다 피는 계절이 다 다른데, 왜 너만 봄에 안 폈다고 고개를 푹 숙이고 그래.',
-          '인생 길다. 지금 겪는 오르막길은 손님이 높은 산으로 올라가고 있다는 증거야.',
-          '결과 하나 삐끗했다고 손님이 살아온 시간까지 거짓말이 되는 건 아니다.'
-        ],
-        outros: [
-          '면발 불기 전에 후루룩 넘겨라. 든든하게 채워놔야 내일 또 달려볼 힘이 나지!',
-          '손님은 반드시 잘 풀린다. 이모가 손님 얼굴 딱 보면 각이 나오거든. 날 믿어라.',
-          '조금 천천히 걸어가도 길만 잃지 않으면 돼. 의심하지 마!'
-        ]
-      },
+    // 바닥 (아스팔트)
+    const floorGeo = new THREE.PlaneGeometry(60, 60);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x111317, roughness: 0.25, metalness: 0.4 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
 
-      // 4. 번아웃 / 무기력 / 외로움 / 공허함
-      lonely: {
-        keywords: ['외로', '혼자', '지쳐', '힘들어', '공허', '우울', '쉬고싶', '지쳤', '지침', '무기력', '번아웃', '허탈', '멍', '아무것도'],
-        moodName: '마음의 배터리 방전 상태',
-        dishes: [
-          '진하게 우려낸 꼬치어묵 & 사발 국물',
-          '버터 냄새 솔솔 나는 옥수수 콘치즈',
-          '고소한 참기름 냄새 폴폴 나는 똥집볶음',
-          '얼큰하고 칼칼한 뚝배기 번데기탕'
-        ],
-        intros: [
-          '어휴, 영혼이 반쯤 빠져나간 채로 들어왔구만.',
-          '그냥... 아무 말도 하기 싫고 다 귀찮은 날이지 오늘이?',
-          '버티고 버티다가 배터리가 0% 됐네. 쉬러 잘 왔다.'
-        ],
-        midThoughts: [
-          '열심히 안 살아도 돼. 매일 의미를 찾으려고 기를 쓰니까 지치는 거야.',
-          '때로는 아무것도 안 하고 멍하니 빗소리나 듣는 게 최고의 보약이다.',
-          '세상천지에 나 혼자 남겨진 것 같아도, 포차 불빛 하나 켜두고 기다리는 사람도 여기 있잖아.'
-        ],
-        outros: [
-          '어묵 국물 두 모금 마시고, 오늘 밤은 그냥 너 자신을 좀 내버려 둬라.',
-          '충분히 애썼다. 오늘 하루 무사히 살아남아 포차 의자에 앉은 것만으로도 대단한 거야.',
-          '여기선 아무것도 증명할 필요 없어. 그냥 편하게 기대앉아 있어라.'
-        ]
-      },
+    // 포장마차 그룹
+    const pochaGroup = new THREE.Group();
+    pochaGroup.position.set(0, 0, -3);
 
-      // 5. 기본 / 기타 일상
-      general: {
-        keywords: [],
-        moodName: '찬바람 부는 늦은 밤의 허기',
-        dishes: [
-          '탱글탱글한 순대와 간 한 접시',
-          '바삭하게 구워낸 군만두',
-          '참기름 냄새 진한 김치전',
-          '시원칼칼한 바지락 조개탕'
-        ],
-        intros: [
-          '어서 와라! 비도 오는데 길 안 미끄러웠어?',
-          '늦은 시간에 고생 많았다. 얼른 엉덩이 붙이고 앉아.',
-          '포차 불빛 보고 들어왔구만? 참새가 방앗간을 그냥 지나치나!'
-        ],
-        midThoughts: [
-          '사는 게 별거 있나. 저녁에 맘 편히 따뜻한 거 한 접시 먹고 푹 자면 그게 행복이지.',
-          '복잡한 생각은 천막 바깥 빗물에 다 흘려보내고, 여기선 맛있는 것만 생각해라.',
-          '어떤 하루를 보냈든, 이 문을 열고 들어온 순간 손님은 오늘 하루를 완주한 거다.'
-        ],
-        outros: [
-          '음식 식기 전에 얼른 먹어라! 부족하면 언제든 말하고.',
-          '오늘 밤도 푹 쉬고, 내일은 조금 더 가벼운 발걸음이길 바란다!',
-          '가끔 속 답답할 때 또 들러. 이모는 언제나 불 켜두고 있을 테니까.'
-        ]
-      }
-    };
+    // 지붕 (주황 천막)
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0xdd4b18, roughness: 0.6, side: THREE.DoubleSide });
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(5.5, 2.5, 4), roofMat);
+    roof.position.y = 4.2; roof.rotation.y = Math.PI / 4;
+    pochaGroup.add(roof);
 
-    function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+    // 눈 덮인 지붕 레이어 (눈 올 때 활성화)
+    const snowRoofMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, visible: false });
+    const snowRoof = new THREE.Mesh(new THREE.ConeGeometry(5.52, 2.52, 4), snowRoofMat);
+    snowRoof.position.y = 4.22; snowRoof.rotation.y = Math.PI / 4;
+    pochaGroup.add(snowRoof);
 
-    function generateCustomAdvice(inputText) {
-      const text = inputText.toLowerCase();
-      let matchedCategory = 'general';
-
-      // 우선순위 키워드 매칭
-      const categories = ['work', 'love', 'future', 'lonely'];
-      for (const cat of categories) {
-        if (POCHA_BRAIN[cat].keywords.some(k => text.includes(k))) {
-          matchedCategory = cat;
-          break;
-        }
-      }
-
-      const bundle = POCHA_BRAIN[matchedCategory];
-      const dish = pickRandom(bundle.dishes);
-      const intro = pickRandom(bundle.intros);
-      const mid = pickRandom(bundle.midThoughts);
-      const outro = pickRandom(bundle.outros);
-
-      return {
-        mood: bundle.moodName,
-        dish: dish,
-        fullAdvice: `"${intro} ${mid} ${outro}"`
-      };
-    }
-
-    // --- 2. 캔버스 렌더러 & 조작 엔진 ---
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-
-    const me = {
-      x: 180, y: 380,
-      targetX: 180, targetY: 380,
-      color: '#e56b29',
-      message: '',
-      messageTimer: 0
-    };
-
-    // 다른 손님들 (랜덤 이동 시뮬레이션)
-    const peers = {
-      p1: { x: 620, y: 320, color: '#38bdf8', message: '파전 냄새 죽이네...', messageTimer: 200 },
-      p2: { x: 740, y: 440, color: '#a855f7', message: '내일 출근 어쩌냐', messageTimer: 240 }
-    };
-
-    const raindrops = Array.from({length: 80}, () => ({
-      x: Math.random() * 960, y: Math.random() * 600,
-      len: Math.random() * 12 + 8, speed: Math.random() * 6 + 10
-    }));
-
-    function drawMap() {
-      // 바깥 아스팔트
-      ctx.fillStyle = '#0f1118';
-      ctx.fillRect(0, 0, 320, 600);
-
-      // 천막 실내
-      ctx.fillStyle = '#1e1410';
-      ctx.fillRect(320, 0, 640, 600);
-
-      // 천막 벽면 기둥
-      ctx.fillStyle = '#d9531e';
-      ctx.fillRect(315, 0, 10, 240);
-      ctx.fillRect(315, 360, 10, 240);
-
-      // 알전구 웜 라이팅
-      const lightGrad = ctx.createRadialGradient(640, 300, 50, 640, 300, 350);
-      lightGrad.addColorStop(0, 'rgba(245, 140, 44, 0.24)');
-      lightGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = lightGrad;
-      ctx.fillRect(320, 0, 640, 600);
-
-      // 이모님 조리 카운터
-      ctx.fillStyle = '#3a2e26';
-      ctx.fillRect(520, 40, 380, 90);
-      ctx.fillStyle = '#b03a1e'; ctx.fillRect(540, 55, 80, 55); // 떡볶이
-      ctx.fillStyle = '#a8a29e'; ctx.fillRect(640, 55, 90, 55); // 어묵솥
-      
-      // 이모님 캐릭터
-      ctx.fillStyle = '#e56b29';
-      ctx.beginPath();
-      ctx.arc(685, 28, 16, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px sans-serif';
-      ctx.fillText('이모님 (가까이 가서 F키)', 615, 15);
-
-      // 빨간 원형 플라스틱 테이블
-      ctx.fillStyle = '#b91c1c';
-      ctx.beginPath();
-      ctx.arc(640, 380, 52, 0, Math.PI*2);
-      ctx.fill();
-      ctx.fillStyle = '#16a34a'; ctx.fillRect(636, 370, 8, 18); // 초록병
-
-      // 합판 낙서벽
-      ctx.fillStyle = '#2b211a';
-      ctx.fillRect(340, 40, 130, 80);
-      ctx.strokeStyle = '#4a3b30';
-      ctx.strokeRect(340, 40, 130, 80);
-      ctx.fillStyle = '#f5ecd7';
-      ctx.font = '12px sans-serif';
-      ctx.fillText('합판 낙서벽 (F키)', 355, 85);
-    }
-
-    function drawAvatar(p, isMe) {
-      ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y + 12, 14, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      if (p.message && p.messageTimer > 0) {
-        ctx.font = '13px sans-serif';
-        const tw = ctx.measureText(p.message).width;
-        ctx.fillStyle = 'rgba(20, 16, 14, 0.9)';
-        ctx.strokeStyle = '#e56b29';
-        ctx.beginPath();
-        ctx.roundRect(p.x - tw / 2 - 10, p.y - 48, tw + 20, 26, 6);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#fff';
-        ctx.textAlign = 'center';
-        ctx.fillText(p.message, p.x, p.y - 31);
-      }
-      ctx.restore();
-    }
-
-    function updateRain() {
-      ctx.strokeStyle = 'rgba(180, 210, 240, 0.35)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      raindrops.forEach(r => {
-        if (r.x < 330) {
-          ctx.moveTo(r.x, r.y);
-          ctx.lineTo(r.x - 2, r.y + r.len);
-        }
-        r.y += r.speed;
-        r.x -= 1;
-        if (r.y > 600) { r.y = -10; r.x = Math.random() * 340; }
-      });
-      ctx.stroke();
-    }
-
-    const keys = {};
-    window.addEventListener('keydown', e => {
-      keys[e.key.toLowerCase()] = true;
-      if (e.key.toLowerCase() === 'f') handleInteraction();
-    });
-    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
-
-    canvas.addEventListener('click', e => {
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      me.targetX = (e.clientX - rect.left) * scaleX;
-      me.targetY = (e.clientY - rect.top) * scaleY;
+    // 기둥
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8 });
+    const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, 3.2);
+    [[-3.2, -3.2], [3.2, -3.2], [-3.2, 3.2], [3.2, 3.2]].forEach(([x, z]) => {
+      const pole = new THREE.Mesh(poleGeo, poleMat);
+      pole.position.set(x, 1.6, z);
+      pochaGroup.add(pole);
     });
 
-    function loop() {
-      const speed = 3.5;
-      if (keys['arrowleft'] || keys['a']) me.x -= speed;
-      if (keys['arrowright'] || keys['d']) me.x += speed;
-      if (keys['arrowup'] || keys['w']) me.y -= speed;
-      if (keys['arrowdown'] || keys['s']) me.y += speed;
+    // 비닐 가림막
+    const vinylMat = new THREE.MeshStandardMaterial({ color: 0xffaa66, transparent: true, opacity: 0.28, side: THREE.DoubleSide });
+    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 2.8), vinylMat);
+    backWall.position.set(0, 1.4, -3.2);
+    pochaGroup.add(backWall);
 
-      if (Math.abs(me.x - me.targetX) > 2) me.x += (me.targetX - me.x) * 0.1;
-      if (Math.abs(me.y - me.targetY) > 2) me.y += (me.targetY - me.y) * 0.1;
+    // 조리대 & 어묵솥 & 떡볶이판
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.1, 1.2), new THREE.MeshStandardMaterial({ color: 0x423126 }));
+    counter.position.set(0, 0.55, -2.0);
+    pochaGroup.add(counter);
 
-      // 천막 통로 충돌 처리
-      if (me.x > 310 && me.x < 330) {
-        if (me.y < 235 || me.y > 365) me.x = me.x < 320 ? 309 : 331;
+    const odengVat = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 0.9), new THREE.MeshStandardMaterial({ color: 0xa8a29e, metalness: 0.9 }));
+    odengVat.position.set(-0.8, 1.15, -2.0);
+    pochaGroup.add(odengVat);
+
+    const tteokVat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.35, 0.9), new THREE.MeshStandardMaterial({ color: 0xa82010 }));
+    tteokVat.position.set(1.0, 1.15, -2.0);
+    pochaGroup.add(tteokVat);
+
+    // 테이블 & 소주병 & 의자
+    const tableMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.5 });
+    const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.08, 24), tableMat);
+    tableTop.position.set(0, 0.85, 0.5);
+    pochaGroup.add(tableTop);
+    const tableLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.85), poleMat);
+    tableLeg.position.set(0, 0.425, 0.5);
+    pochaGroup.add(tableLeg);
+
+    const sojuBottle = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.45), new THREE.MeshStandardMaterial({ color: 0x15803d, transparent: true, opacity: 0.85 }));
+    sojuBottle.position.set(0.1, 1.1, 0.4);
+    pochaGroup.add(sojuBottle);
+
+    const stool1 = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.38, 0.45, 16), tableMat);
+    stool1.position.set(-1.2, 0.225, 0.5);
+    const stool2 = stool1.clone();
+    stool2.position.set(1.2, 0.225, 0.5);
+    pochaGroup.add(stool1, stool2);
+
+    scene.add(pochaGroup);
+
+    // 조명
+    const warmLight = new THREE.PointLight(0xff8c2b, 2.8, 12);
+    warmLight.position.set(0, 3.2, -2.5);
+    pochaGroup.add(warmLight);
+
+    const ambientLight = new THREE.AmbientLight(0x222638, 1.2);
+    scene.add(ambientLight);
+
+    // ==========================================
+    // 2. 동적 날씨 파티클 시스템 (비 / 눈 / 별)
+    // ==========================================
+    let currentWeather = 'rain';
+    const particleCount = 1200;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePos = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      particlePos[i] = (Math.random() - 0.5) * 35;
+      particlePos[i+1] = Math.random() * 20;
+      particlePos[i+2] = (Math.random() - 0.5) * 35;
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+
+    const particleMat = new THREE.PointsMaterial({
+      color: 0x8ab4f8,
+      size: 0.08,
+      transparent: true,
+      opacity: 0.5
+    });
+    const weatherParticles = new THREE.Points(particleGeo, particleMat);
+    scene.add(weatherParticles);
+
+    // 날씨 변경 함수
+    function applyWeather(type) {
+      currentWeather = type;
+      document.getElementById('weatherSelect').value = type;
+
+      if (type === 'rain') {
+        scene.background.set(0x06060a);
+        scene.fog.color.set(0x06060a);
+        scene.fog.density = 0.035;
+        floorMat.roughness = 0.2; // 젖은 물기
+        floorMat.color.set(0x111317);
+        snowRoofMat.visible = false;
+        particleMat.color.set(0x8ab4f8);
+        particleMat.size = 0.08;
+        particleMat.opacity = 0.5;
+        document.getElementById('soundToggle').textContent = '🌧️ 빗소리 켜기';
+        document.getElementById('location-weather-text').textContent = '🌧️ 빗소리 포차 (Rainy)';
+      } else if (type === 'snow') {
+        scene.background.set(0x0a0c14);
+        scene.fog.color.set(0x0a0c14);
+        scene.fog.density = 0.03;
+        floorMat.roughness = 0.7; // 눈 덮인 도로
+        floorMat.color.set(0x242733);
+        snowRoofMat.visible = true; // 지붕에 눈 쌓임
+        particleMat.color.set(0xffffff);
+        particleMat.size = 0.16; // 펄펄 날리는 눈송이
+        particleMat.opacity = 0.85;
+        document.getElementById('soundToggle').textContent = '❄️ 바람소리 켜기';
+        document.getElementById('location-weather-text').textContent = '❄️ 눈 내리는 포차 (Snowy)';
+      } else if (type === 'clear') {
+        scene.background.set(0x040612); // 깊은 남색 밤하늘
+        scene.fog.color.set(0x040612);
+        scene.fog.density = 0.015; // 맑고 투명한 시야
+        floorMat.roughness = 0.5;
+        floorMat.color.set(0x14151b);
+        snowRoofMat.visible = false;
+        particleMat.color.set(0xfff0aa); // 밤하늘 반짝이는 별
+        particleMat.size = 0.09;
+        particleMat.opacity = 0.7;
+        document.getElementById('soundToggle').textContent = '🦗 풀벌레소리 켜기';
+        document.getElementById('location-weather-text').textContent = '✨ 맑은 별밤 포차 (Clear)';
+      } else if (type === 'fog') {
+        scene.background.set(0x14161a);
+        scene.fog.color.set(0x14161a);
+        scene.fog.density = 0.065; // 자욱한 밤안개
+        floorMat.roughness = 0.4;
+        floorMat.color.set(0x17181c);
+        snowRoofMat.visible = false;
+        particleMat.opacity = 0.15; // 안개 입자
+        particleMat.size = 0.25;
+        document.getElementById('soundToggle').textContent = '🌫️ 심야 바람소리 켜기';
+        document.getElementById('location-weather-text').textContent = '🌫️ 안개 자욱한 포차 (Foggy)';
       }
-      me.x = Math.max(20, Math.min(940, me.x));
-      me.y = Math.max(30, Math.min(570, me.y));
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawMap();
-      updateRain();
-      
-      Object.values(peers).forEach(p => drawAvatar(p, false));
-      drawAvatar(me, true);
-
-      if (me.messageTimer > 0) me.messageTimer--;
-
-      requestAnimationFrame(loop);
-    }
-    requestAnimationFrame(loop);
-
-    // --- 3. 인터랙션 및 처방 실행 ---
-    function handleInteraction() {
-      if (Math.hypot(me.x - 685, me.y - 140) < 95) openModal('imoModal');
-      if (Math.hypot(me.x - 405, me.y - 120) < 85) openModal('wallModal');
     }
 
-    function openModal(id) { document.getElementById(id).classList.add('active'); }
-    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+    function changeWeatherManual(val) {
+      applyWeather(val);
+    }
 
-    function prescribeComfort() {
-      const text = document.getElementById('worryInput').value.trim();
-      if (!text) {
-        alert('이모한테 털어놓을 이야기를 한 줄이라도 적어줘라!');
+    // ==========================================
+    // 3. 실제 사용자 위치 기반 무료 날씨 API 연동
+    // ==========================================
+    function detectRealWeather() {
+      if (!navigator.geolocation) {
+        applyWeather('rain');
         return;
       }
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const { latitude, longitude } = position.coords;
+            // 무료 오픈 날씨 API (API 키 필요 없음)
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`);
+            const data = await res.json();
+            const code = data.current_weather.weathercode;
 
-      // 자연어 분석 및 맞춤 처방 조립
-      const result = generateCustomAdvice(text);
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}.${now.getMonth()+1}.${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-      document.getElementById('receiptDate').textContent = dateStr;
-      document.getElementById('receiptMood').textContent = result.mood;
-      document.getElementById('receiptDish').innerHTML = `처방 안주: <span style="color:#d9531e;">${result.dish}</span>`;
-      document.getElementById('receiptAdvice').innerHTML = `<strong>이모의 한마디:</strong><br>${result.fullAdvice}`;
-      
-      document.getElementById('receiptResult').style.display = 'block';
+            // WMO 날씨 코드 매핑
+            if ([51,53,55,61,63,65,80,81,82,95,96].includes(code)) {
+              applyWeather('rain'); // 비
+            } else if ([71,73,75,77,85,86].includes(code)) {
+              applyWeather('snow'); // 눈
+            } else if ([45,48].includes(code)) {
+              applyWeather('fog'); // 안개
+            } else {
+              applyWeather('clear'); // 맑음/구름
+            }
+          } catch(e) {
+            applyWeather('rain');
+          }
+        },
+        () => {
+          // 위치 권한 거부 시 기본 비 오는 밤으로 설정
+          applyWeather('rain');
+        },
+        { timeout: 5000 }
+      );
     }
+    detectRealWeather();
 
-    function postGraffiti() {
-      const input = document.getElementById('graffitiInput');
+    // ==========================================
+    // 4. 캐릭터 및 카메라 조작
+    // ==========================================
+    const avatar = new THREE.Group();
+    avatar.position.set(0, 0, 5);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 20, 20), new THREE.MeshStandardMaterial({ color: 0xffcdb2 }));
+    head.position.y = 1.35;
+    avatar.add(head);
+
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.38, 0.8, 16), new THREE.MeshStandardMaterial({ color: 0xf57832 }));
+    body.position.y = 0.75;
+    avatar.add(body);
+    scene.add(avatar);
+
+    let isMouseDown = false, mouseX = 0, mouseY = 0, cameraAngle = 0, cameraPitch = 0.3;
+    window.addEventListener('mousedown', e => { if (e.clientY < window.innerHeight - 90) isMouseDown = true; mouseX = e.clientX; mouseY = e.clientY; });
+    window.addEventListener('mouseup', () => isMouseDown = false);
+    window.addEventListener('mousemove', e => {
+      if (!isMouseDown) return;
+      cameraAngle -= (e.clientX - mouseX) * 0.005;
+      cameraPitch = Math.max(0.1, Math.min(0.8, cameraPitch + (e.clientY - mouseY) * 0.003));
+      mouseX = e.clientX; mouseY = e.clientY;
+    });
+
+    const keys = {};
+    window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+    const clock = new THREE.Clock();
+    const bubbleEl = document.getElementById('speech-bubble');
+    let bubbleTimer = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+
+      // 이동 처리
+      const speed = 4.2 * delta;
+      let moveX = 0, moveZ = 0;
+      if (keys['w'] || keys['arrowup']) moveZ -= 1;
+      if (keys['s'] || keys['arrowdown']) moveZ += 1;
+      if (keys['a'] || keys['arrowleft']) moveX -= 1;
+      if (keys['d'] || keys['arrowright']) moveX += 1;
+
+      if (moveX !== 0 || moveZ !== 0) {
+        const len = Math.hypot(moveX, moveZ);
+        const normX = moveX / len, normZ = moveZ / len;
+        const sin = Math.sin(cameraAngle), cos = Math.cos(cameraAngle);
+        avatar.position.x += (normX * cos + normZ * sin) * speed;
+        avatar.position.z += (-normX * sin + normZ * cos) * speed;
+        avatar.rotation.y = Math.atan2(normX * cos + normZ * sin, -normX * sin + normZ * cos);
+      }
+
+      // 카메라 숄더뷰 추적
+      const camDist = 5.5;
+      const targetCamX = avatar.position.x + Math.sin(cameraAngle) * camDist * Math.cos(cameraPitch);
+      const targetCamY = avatar.position.y + Math.sin(cameraPitch) * camDist + 1.2;
+      const targetCamZ = avatar.position.z + Math.cos(cameraAngle) * camDist * Math.cos(cameraPitch);
+      camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.1);
+      camera.lookAt(avatar.position.x, avatar.position.y + 1.0, avatar.position.z);
+
+      // 날씨별 파티클 움직임
+      const p = particleGeo.attributes.position.array;
+      for (let i = 0; i < particleCount * 3; i += 3) {
+        if (currentWeather === 'rain') {
+          p[i+1] -= 18 * delta; // 빠른 빗줄기
+          p[i] -= 1.5 * delta;
+          if (p[i+1] < 0) p[i+1] = 20;
+        } else if (currentWeather === 'snow') {
+          p[i+1] -= 2.5 * delta; // 천천히 나풀거리는 눈송이
+          p[i] += Math.sin(clock.getElapsedTime() + p[i+1]) * 0.02;
+          if (p[i+1] < 0) p[i+1] = 20;
+        } else if (currentWeather === 'clear') {
+          // 밤하늘의 별빛 반짝임
+          p[i+1] += Math.sin(clock.getElapsedTime() * 2 + p[i]) * 0.003;
+        } else if (currentWeather === 'fog') {
+          p[i] += 0.5 * delta;
+          if (p[i] > 18) p[i] = -18;
+        }
+      }
+      particleGeo.attributes.position.needsUpdate = true;
+
+      // 조명 효과
+      warmLight.intensity = 2.7 + Math.sin(clock.getElapsedTime() * 10) * 0.15;
+
+      // 말풍선 투영
+      if (bubbleTimer > 0) {
+        bubbleTimer -= delta;
+        const headPos = new THREE.Vector3(avatar.position.x, avatar.position.y + 1.85, avatar.position.z);
+        headPos.project(camera);
+        bubbleEl.style.left = `${(headPos.x * 0.5 + 0.5) * window.innerWidth}px`;
+        bubbleEl.style.top = `${(-(headPos.y * 0.5) + 0.5) * window.innerHeight}px`;
+        bubbleEl.style.display = 'block';
+      } else {
+        bubbleEl.style.display = 'none';
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ==========================================
+    // 5. 인터랙션 및 사운드
+    // ==========================================
+    function openImo() { document.getElementById('imoModal').classList.add('active'); }
+    function openWall() { document.getElementById('wallModal').classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    function sendChat() {
+      const input = document.getElementById('chatInput');
       const val = input.value.trim();
       if (!val) return;
-      const list = document.getElementById('graffitiList');
+      bubbleEl.textContent = val;
+      bubbleTimer = 4.0;
+      input.value = '';
+    }
+
+    function toastMsg(msg) {
+      bubbleEl.textContent = msg;
+      bubbleTimer = 3.0;
+    }
+
+    function postWall() {
+      const input = document.getElementById('wallInput');
+      const val = input.value.trim();
+      if (!val) return;
+      const list = document.getElementById('wallList');
       const div = document.createElement('div');
       div.textContent = `- ${val}`;
       list.prepend(div);
       input.value = '';
     }
 
-    function sendChatMessage() {
-      const input = document.getElementById('chatInput');
-      const text = input.value.trim();
+    function prescribeAdvice() {
+      const text = document.getElementById('worryInput').value.trim();
       if (!text) return;
-      me.message = text;
-      me.messageTimer = 180;
-      input.value = '';
+      const dishes = [
+        { title: '연탄불 매콤 닭발 & 소주 반 잔', desc: '"억울하고 열받을 땐 매운 걸 씹어야 속이 뻥 뚫려. 시원하게 욕 한 번 하고 훌훌 털어버려라!"' },
+        { title: '뜨끈하고 뽀얀 홍합탕', desc: '"날씨도 시린데 따뜻한 국물이 최고야. 호호 불어 마시고 오늘 밤은 푹 자둬."' },
+        { title: '도톰한 치즈 계란말이', desc: '"인생 빡빡하게 굴 것 없다. 몽글몽글하게 쉬어가도 세상 절대 안 무너진다."' }
+      ];
+      const pick = dishes[Math.floor(Math.random() * dishes.length)];
+      document.getElementById('dishTitle').textContent = `처방 안주: ${pick.title}`;
+      document.getElementById('dishDesc').textContent = pick.desc;
+      document.getElementById('resultBox').style.display = 'block';
     }
 
-    // --- 4. Web Audio 합성기 (빗소리 & 철판 지글거림) ---
-    let audioCtx = null;
-    let isPlaying = false;
-    document.getElementById('audioToggle').addEventListener('click', () => {
+    // Web Audio 신시사이저 (날씨 맞춤형 사운드)
+    let audioCtx = null, isPlaying = false, noiseNode = null, filterNode = null;
+    document.getElementById('soundToggle').addEventListener('click', () => {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (!isPlaying) {
-        startAmbientSound();
-        document.getElementById('audioToggle').textContent = '🔊 빗소리 끄기';
+        audioCtx.resume();
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        noiseNode = audioCtx.createBufferSource();
+        noiseNode.buffer = buf;
+        noiseNode.loop = true;
+        filterNode = audioCtx.createBiquadFilter();
+        filterNode.type = 'lowpass';
+        filterNode.frequency.value = currentWeather === 'snow' ? 400 : 800; // 눈일 땐 먹먹한 바람소리
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.08;
+        noiseNode.connect(filterNode); filterNode.connect(gain); gain.connect(audioCtx.destination);
+        noiseNode.start(0);
+        document.getElementById('soundToggle').textContent = '🔊 소리 끄기';
         isPlaying = true;
       } else {
         audioCtx.suspend();
-        document.getElementById('audioToggle').textContent = '🌧️ 빗소리 켜기';
+        document.getElementById('soundToggle').textContent = '🌧️ 소리 켜기';
         isPlaying = false;
       }
     });
-
-    function startAmbientSound() {
-      audioCtx.resume();
-      const bufferSize = audioCtx.sampleRate * 2;
-      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const output = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
-
-      const whiteNoise = audioCtx.createBufferSource();
-      whiteNoise.buffer = noiseBuffer;
-      whiteNoise.loop = true;
-
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 850;
-
-      const gain = audioCtx.createGain();
-      gain.gain.value = 0.08;
-
-      whiteNoise.connect(filter);
-      filter.connect(gain);
-      gain.connect(audioCtx.destination);
-      whiteNoise.start(0);
-    }
   </script>
 </body>
 </html>
